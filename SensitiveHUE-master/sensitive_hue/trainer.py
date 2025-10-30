@@ -155,7 +155,6 @@ class Trainer(ADTrainer):
         return errors, labels
 
     def test(self, data_loader, ignore_dims=None, select_pos='mid'):
-        print("here")
         errors, labels = self._get_anomaly_score(data_loader, True, select_pos)
         preds, preds_adjust = self.get_pred_results(errors, labels, ignore_dims)
         self.show_metric_results(preds, preds_adjust, labels)

@@ -5,13 +5,12 @@ import sensitive_hue
 import numpy as np
 import torch.optim as optim
 import pandas as pd
-import time  # 添加时间模块
+import time
 from config.parser import YAMLParser
 from base.dataset import ADataset, split_dataset
 from torch.utils.data import DataLoader
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import precision_recall_fscore_support  # 添加评估指标
-
+from sklearn.metrics import precision_recall_fscore_support
 
 def process_smd_dataset(data_dir, output_dir):
     """
@@ -137,7 +136,7 @@ def process_psm_dataset(data_dir, output_dir):
 
 def process_swat_dataset(data_dir, output_dir):
     """
-    处理SWaT数据集，将其转换为项目所需的格式
+    处理SWaT数据集
     
     Args:
         data_dir: SWaT原始数据目录路径
@@ -154,9 +153,7 @@ def process_swat_dataset(data_dir, output_dir):
     train_values = train_data.values[:, :-1]
     test_values = test_data.values[:, :-1]
     test_labels = test_data.values[:, -1:]  # 保持二维数组
-    
  
-    
     # 保存训练数据
     np.save(os.path.join(output_dir, 'train.npy'), train_values)
     
@@ -181,7 +178,6 @@ def prepare_dataset(data_args, data_name):
     train_file = os.path.join(data_args.data_dir, 'train.npy')
     test_file = os.path.join(data_args.data_dir, 'test.npz')
     
-    # 如果输出文件已存在，则跳过处理
     if os.path.exists(train_file) and os.path.exists(test_file):
         print(f"Dataset {data_name} already processed. Skipping...")
         return
@@ -276,7 +272,6 @@ def train_single_entity(args, data_name: str, only_test=False):
         trainer.train(data_loaders[0], data_loaders[1])
     train_time = time.time() - train_start_time
     
-    # 记录测试时间和获取测试结果
     test_start_time = time.time()
     ignore_dims = getattr(data_args, 'ignore_dims', None)
     print(f"Testing {data_name}...")
