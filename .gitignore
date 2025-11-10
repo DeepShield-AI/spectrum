@@ -1,0 +1,8 @@
+env/
+result/
+results/
+datasets/
+__pycache__/
+.idea/
+.vscode/
+train/
