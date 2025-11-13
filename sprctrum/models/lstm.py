@@ -5,7 +5,9 @@ from torch.optim import Adam
 from torch.utils.data import DataLoader
 from typing import List
 import os
+
 from ..config import WINDOW_SIZE
+
 from ..utils import device
 import polars as pl
 
