@@ -5,13 +5,13 @@ import torch
 from torch.utils.data import Dataset
 from ..models.sr_cnn.spectral_residual import spectral_residual, average_filter
 
-class SRCNNKPILoader(Dataset):
+class YaHooLoader(Dataset):
     def __init__(
-        self,
-        values: pl.Series,
-        labels: pl.Series,
-        window_size: int = WINDOW_SIZE,
-        step: int = WINDOW_SIZE // 2,
+            self,
+            values: pl.Series,
+            labels: pl.Series,
+            window_size: int = WINDOW_SIZE,
+            step: int = WINDOW_SIZE // 2,
     ):
         self.control = 0
         self.window_size = window_size
