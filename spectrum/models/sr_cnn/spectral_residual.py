@@ -12,7 +12,7 @@ def spectral_residual(values):
     """
     EPS = 1e-8
     trans = np.fft.fft(values)
-    mag = np.sqrt(trans.real**2 + trans.imag**2)
+    mag = np.sqrt(trans.real ** 2 + trans.imag ** 2)
 
     maglog = [np.log(item) if abs(item) > EPS else 0 for item in mag]
 
@@ -28,7 +28,7 @@ def spectral_residual(values):
     ]
 
     wave_r = np.fft.ifft(trans)
-    mag = np.sqrt(wave_r.real**2 + wave_r.imag**2)
+    mag = np.sqrt(wave_r.real ** 2 + wave_r.imag ** 2)
 
     return mag
 
@@ -71,11 +71,11 @@ def extend_series(values: pl.Series, extend_num=5, look_ahead=5) -> np.ndarray:
     if look_ahead < 1:
         raise ValueError("look_ahead must be at least 1")
 
-    extension = [predict_next(values[-look_ahead - 2 : -1])] * extend_num
+    extension = [predict_next(values[-look_ahead - 2: -1])] * extend_num
     return np.concatenate((values, extension), axis=0)
 
 
-def average_filter(values, n=3):
+def average_filter(values, n=21):
     """
     Calculate the sliding window average for the give time series.
     Mathematically, res[i] = sum_{j=i-t+1}^{i} values[j] / t, where t = min(n, i+1)

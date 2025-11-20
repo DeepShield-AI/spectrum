@@ -1,31 +1,29 @@
+from typing import Tuple
+
 import numpy as np
+import polars as pl
 import torch
 import torch.nn as nn
 from torch.optim import Adam
 from torch.utils.data import DataLoader
-from typing import List
-import os
-from ..config import WINDOW_SIZE
-from ..utils import device
-import polars as pl
 
-from .dataset import TimeSeries
+from ..config import WINDOW_SIZE
+from ..dataset import LSTMYahooDataset
 from ..utils import EarlyStopping
+from ..utils import device
 
 
 class LSTM:
     def __init__(
-        self,
-        input_size: int,
-        lstm_layers: int = 2,
-        window_size: int = WINDOW_SIZE,
-        prediction_window_size: int = 1,
-        output_dims: List[int] = [],
-        batch_size: int = 64,
-        validation_batch_size: int = 64,
-        test_batch_size: int = 64,
-        epochs: int = 50,
-        learning_rate: float = 0.001,
+            self,
+            input_size: int = 1,
+            lstm_layers: int = 2,
+            window_size: int = WINDOW_SIZE,
+            prediction_window_size: int = 1,
+            batch_size: int = 32,
+            epochs: int = 50,
+            split=0.9,
+            learning_rate: float = 0.001,
     ):
         self.model = _LSTM(
             input_size=input_size,
@@ -33,51 +31,40 @@ class LSTM:
             window_size=window_size,
             prediction_window_size=prediction_window_size,
         ).to(device())
-        self.input_size = input_size
-        self.lstm_layers = lstm_layers
         self.window_size = window_size
         self.prediction_window_size = prediction_window_size
-        self.output_dims = output_dims
         self.batch_size = batch_size
-        self.validation_batch_size = validation_batch_size
-        self.test_batch_size = test_batch_size
         self.epochs = epochs
         self.lr = learning_rate
+        self.split = split
         self.anomaly_scorer = AnomalyScorer()
 
-    def fit(self, values: pl.DataFrame, labels: pl.DataFrame):
+    def fit(self, values: pl.Series):
         self.model.train()
         optimizer = Adam(self.model.parameters(), lr=self.lr)
         criterion = nn.MSELoss()
-
-        def cb(i, _l, _e):
-            if i:
-                self._estimate_normal_distribution(valid_dl)
-                self.save(model_path)
-
+        train_dataloader, valid_dataloader = self._split_data(values.to_numpy())
         early_stopping = EarlyStopping(
             epochs=self.epochs,
-            callbacks=[cb],
         )
 
         for epoch in early_stopping:
             self.model.train()
             losses = []
-            for x, y in train_dl:
+            for x, y in train_dataloader:
                 self.model.zero_grad()
                 loss = self._predict(x, y, criterion)
                 loss.backward()
                 optimizer.step()
                 losses.append(loss.item())
-
             self.model.eval()
             valid_losses = []
-            for x, y in valid_dl:
+            for x, y in valid_dataloader:
                 loss = self._predict(x, y, criterion)
                 valid_losses.append(loss.item())
             validation_loss = sum(valid_losses)
             early_stopping.update(validation_loss)
-        self._estimate_normal_distribution(valid_dl)
+        self._estimate_normal_distribution(valid_dataloader)
 
     def _estimate_normal_distribution(self, dl: DataLoader):
         self.model.eval()
@@ -89,21 +76,20 @@ class LSTM:
         self.anomaly_scorer.find_distribution(torch.cat(errors))
 
     def _predict(self, x, y, criterion) -> torch.Tensor:
-        y = y.reshape(-1, self.prediction_length * self.hidden_units)
+        y = y.reshape(-1, self.prediction_window_size * self.model.hidden_units)
         y_hat = self.model.forward(x)
         loss = criterion(y_hat, y)
         return loss
 
-    def predict(self, values: pl.DataFrame) -> np.ndarray:
+    def predict(self, values: pl.Series) -> np.ndarray:
         self.model.eval()
         dataloader = DataLoader(
-            TimeSeries(
-                values,
-                window_length=self.window_size,
-                prediction_length=self.prediction_length,
-                output_dims=self.output_dims,
+            LSTMYahooDataset(
+                values.to_numpy().astype(np.float32),
+                window_size=self.window_size,
+                step=self.prediction_window_size,
             ),
-            batch_size=self.test_batch_size,
+            batch_size=self.batch_size,
         )
         errors = []
         for x, y in dataloader:
@@ -113,21 +99,15 @@ class LSTM:
         errors = torch.cat(errors)
         return self.anomaly_scorer.forward(errors.mean(dim=1)).detach().numpy()
 
-
-    def save(self, path: os.PathLike):
-        torch.save(
-            {"model": self.model.state_dict(), "anomaly_scorer": self.anomaly_scorer}, path
-        )
-
-    @staticmethod
-    def load(path: os.PathLike, **kwargs) -> "_LSTM":
-        checkpoint = torch.load(path)
-        model = _LSTM(**kwargs)
-        model.load_state_dict(checkpoint["model"])
-        model.anomaly_scorer = checkpoint["anomaly_scorer"]
-        return model
-
-
+    def _split_data(self, ts: np.array) -> Tuple[DataLoader, DataLoader]:
+        split_at = int(len(ts) * self.split)
+        train_ts = ts[:split_at]
+        valid_ts = ts[split_at:]
+        train_ds = LSTMYahooDataset(train_ts.astype(np.float32), window_size=self.window_size,
+                                    step=self.prediction_window_size)
+        valid_ds = LSTMYahooDataset(valid_ts.astype(np.float32), window_size=self.window_size,
+                                    step=self.prediction_window_size)
+        return DataLoader(train_ds, batch_size=self.batch_size), DataLoader(valid_ds, batch_size=4 * self.batch_size)
 
 
 class AnomalyScorer:
@@ -139,7 +119,7 @@ class AnomalyScorer:
 
     def forward(self, errors: torch.Tensor) -> torch.Tensor:
         mean_diff = errors - self.mean
-        return torch.mul(torch.mul(mean_diff, self.var**-1), mean_diff)
+        return torch.mul(torch.mul(mean_diff, self.var ** -1), mean_diff)
 
     def find_distribution(self, errors: torch.Tensor):
         self.mean = errors.mean(dim=[0, 1])
@@ -148,11 +128,11 @@ class AnomalyScorer:
 
 class _LSTM(nn.Module):
     def __init__(
-        self,
-        input_size: int,
-        lstm_layers: int = 2,
-        window_size: int = WINDOW_SIZE,
-        prediction_window_size: int = 1,
+            self,
+            input_size: int,
+            lstm_layers: int = 2,
+            window_size: int = WINDOW_SIZE,
+            prediction_window_size: int = 1,
     ):
         super().__init__()
 
@@ -161,7 +141,6 @@ class _LSTM(nn.Module):
         self.window_size = window_size
         self.prediction_length = prediction_window_size
         self.hidden_units = input_size
-
         self.lstms = nn.LSTM(
             input_size=input_size,
             hidden_size=self.hidden_units * self.prediction_length,
@@ -172,7 +151,6 @@ class _LSTM(nn.Module):
             in_features=self.window_size * self.hidden_units * self.prediction_length,
             out_features=self.hidden_units * self.prediction_length,
         )
-        self.anomaly_scorer = AnomalyScorer()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x, hidden = self.lstms(x)
