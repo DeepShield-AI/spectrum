@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import polars as pl
@@ -10,12 +11,16 @@ class KPIDataset(Dataset):
     def __init__(
             self,
             kpi_id: str,
-            path: str = "../../datasets/KPI/train/",
+            path: str = "./datasets/KPI/train/",
             window_size: int = WINDOW_SIZE,
             step: int = 1,
     ):
+        path = Path(path) / f"{kpi_id}.csv"
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"{path} does not exist")
+
         ts = pl.read_csv(
-            Path(path) / f"{kpi_id}.csv",
+            path,
             schema={"timestamp": pl.UInt64, "value": pl.Float64, "label": pl.UInt8},
             truncate_ragged_lines=True,
         )
@@ -27,7 +32,7 @@ class KPIDataset(Dataset):
 
         n = len(self.values)
         if n < window_size:
-            self.indices = []
+            raise IndexError("Empty KPIDataset: no windows available (len(values) < window_size)")
         else:
             self.indices = list(range(0, n - window_size + 1, step))
 
