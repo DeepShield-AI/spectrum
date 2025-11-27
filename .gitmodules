@@ -1,0 +1,3 @@
+[submodule "tools/GutenTAG"]
+	path = tools/GutenTAG
+	url = https://github.com/TimeEval/GutenTAG.git
