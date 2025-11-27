@@ -3,20 +3,20 @@ import os
 
 def preprocess_npy_dataset(dataset_name):
     """
-    预处理.npy格式的数据集，并保存为.npy格式（不添加时间戳列）
+    Preprocess .npy format dataset and save as .npy format (without timestamp column)
     
     Parameters:
-    dataset_name (str): 数据集名称 ('MSL', 'SMD', 'SMAP')
+    dataset_name (str): Dataset name ('MSL', 'SMD', 'SMAP')
     """
-    # 构建数据集路径
+    # Build dataset path
     dataset_dir = f"../../datasets/{dataset_name}"
     
-    # 检查数据集目录是否存在
+    # Check if dataset directory exists
     if not os.path.exists(dataset_dir):
-        print(f"数据集目录 {dataset_dir} 不存在")
+        print(f"Dataset directory {dataset_dir} does not exist")
         return
     
-    # 构建文件路径
+    # Build file paths
     train_path = os.path.join(dataset_dir, f"{dataset_name}_train.npy")
     test_path = os.path.join(dataset_dir, f"{dataset_name}_test.npy")
     test_label_path = os.path.join(dataset_dir, f"{dataset_name}_test_label.npy")
