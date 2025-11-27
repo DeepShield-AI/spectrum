@@ -210,4 +210,6 @@ dependencies:
       - torch==2.9.0
       - triton==3.5.0
       - tzdata==2025.2
+  - polars
+  - seaborn
 prefix: /home/smore/anaconda3/envs/spectrum

@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, List
 
 import numpy as np
 import polars as pl
@@ -8,7 +8,7 @@ from torch.optim import Adam
 from torch.utils.data import DataLoader
 
 from ..config import WINDOW_SIZE
-from ..dataset import LSTMYahooDataset
+from ..dataset import LSTMDataset
 from ..utils import EarlyStopping
 from ..utils import device
 
@@ -16,13 +16,14 @@ from ..utils import device
 class LSTM:
     def __init__(
             self,
+            output_dims: List[int],
             input_size: int = 1,
             lstm_layers: int = 2,
             window_size: int = WINDOW_SIZE,
             prediction_window_size: int = 1,
             batch_size: int = 32,
-            epochs: int = 50,
-            split=0.9,
+            epochs: int = 100,
+            split=0.8,
             learning_rate: float = 0.001,
     ):
         self.model = _LSTM(
@@ -30,6 +31,7 @@ class LSTM:
             lstm_layers=lstm_layers,
             window_size=window_size,
             prediction_window_size=prediction_window_size,
+            output_dims=output_dims,
         ).to(device())
         self.window_size = window_size
         self.prediction_window_size = prediction_window_size
@@ -37,13 +39,17 @@ class LSTM:
         self.epochs = epochs
         self.lr = learning_rate
         self.split = split
+        self.output_dims = output_dims
         self.anomaly_scorer = AnomalyScorer()
 
-    def fit(self, values: pl.Series):
+    def fit(self, values):
         self.model.train()
         optimizer = Adam(self.model.parameters(), lr=self.lr)
         criterion = nn.MSELoss()
-        train_dataloader, valid_dataloader = self._split_data(values.to_numpy())
+        train_dataloader, valid_dataloader = self._split_data(values)
+        def cb(i, _l, _e):
+            if i:
+                self._estimate_normal_distribution(valid_dataloader)
         early_stopping = EarlyStopping(
             epochs=self.epochs,
         )
@@ -81,13 +87,14 @@ class LSTM:
         loss = criterion(y_hat, y)
         return loss
 
-    def predict(self, values: pl.Series) -> np.ndarray:
+    def predict(self, values) -> np.ndarray:
         self.model.eval()
         dataloader = DataLoader(
-            LSTMYahooDataset(
-                values.to_numpy().astype(np.float32),
+            LSTMDataset(
+                values,
                 window_size=self.window_size,
                 step=self.prediction_window_size,
+                output_dims=self.output_dims,
             ),
             batch_size=self.batch_size,
         )
@@ -103,10 +110,10 @@ class LSTM:
         split_at = int(len(ts) * self.split)
         train_ts = ts[:split_at]
         valid_ts = ts[split_at:]
-        train_ds = LSTMYahooDataset(train_ts.astype(np.float32), window_size=self.window_size,
-                                    step=self.prediction_window_size)
-        valid_ds = LSTMYahooDataset(valid_ts.astype(np.float32), window_size=self.window_size,
-                                    step=self.prediction_window_size)
+        train_ds = LSTMDataset(train_ts.astype(np.float32), window_size=self.window_size,
+                                    step=self.prediction_window_size, output_dims=self.output_dims)
+        valid_ds = LSTMDataset(valid_ts.astype(np.float32), window_size=self.window_size,
+                                    step=self.prediction_window_size, output_dims=self.output_dims)
         return DataLoader(train_ds, batch_size=self.batch_size), DataLoader(valid_ds, batch_size=4 * self.batch_size)
 
 
@@ -133,6 +140,7 @@ class _LSTM(nn.Module):
             lstm_layers: int = 2,
             window_size: int = WINDOW_SIZE,
             prediction_window_size: int = 1,
+            output_dims: List[int] = None,
     ):
         super().__init__()
 
@@ -140,7 +148,10 @@ class _LSTM(nn.Module):
         self.lstm_layers = lstm_layers
         self.window_size = window_size
         self.prediction_length = prediction_window_size
-        self.hidden_units = input_size
+        if len(output_dims) > 0:
+            self.hidden_units = len(output_dims)
+        else:
+            self.hidden_units = input_size
         self.lstms = nn.LSTM(
             input_size=input_size,
             hidden_size=self.hidden_units * self.prediction_length,

@@ -1,6 +1,10 @@
 import os
 from pathlib import Path
+<<<<<<< HEAD
 from typing import Tuple
+=======
+from typing import Tuple, Optional, List
+>>>>>>> qingqingsinian
 
 import numpy as np
 import polars as pl
@@ -135,24 +139,24 @@ class SRYaHooDataset(Dataset):
         return resdata, reslb
 
 
-class LSTMYahooDataset(Dataset):
+class LSTMDataset(Dataset):
     def __init__(
             self,
             values,
             window_size: int = WINDOW_SIZE,
             step: int = 1,
+            output_dims: Optional[List[int]] = None,
     ):
         self.window_size = window_size
         self.step = step
-        self.values = values
+        self.values = torch.from_numpy(values).float()
+        self.output_dims = output_dims or list(range(values.shape[1]))
 
     def __len__(self):
-        return max(len(self.values) - (self.window_size - 1) - self.step, 0)
+        return max(self.values.shape[0] - (self.window_size - 1) - self.step, 0)
 
     def __getitem__(self, idx) -> Tuple[torch.Tensor, torch.Tensor]:
         end_idx = idx + self.window_size
-        x = self.values[idx:end_idx]
-        y = self.values[end_idx:end_idx + self.step]
-        x = torch.tensor(x).unsqueeze(-1)
-        y = torch.tensor(y)
+        x = self.values[idx:end_idx, self.output_dims]
+        y = self.values[end_idx:end_idx + self.step, self.output_dims]
         return x, y
