@@ -7,6 +7,7 @@ from .sr import Saliency
 from .sr_cnn.srcnn import SRCNN
 from ..config import WINDOW_SIZE
 from .sr.sr import SpectralResidual
+from .usad import USAD
 
 class BaseModel:
     def __init__(
